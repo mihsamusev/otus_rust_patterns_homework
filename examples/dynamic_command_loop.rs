@@ -1,67 +1,111 @@
-use std::rc::Rc;
+// https://github.com/mihsamusev/otus_patterns_hw3/blob/main/src/exceptionhandler.py
 
-// A device component that can report its status
-trait Device {
-    fn report(&self) -> String;
+use std::{rc::Rc, cell::RefCell};
+use std::collections::VecDeque;
+
+#[derive(Debug)]
+struct CommandError {}
+trait Command {
+    fn execute(&mut self) -> Result<(), CommandError>;
 }
 
-// Base device on which all decorators can be attached
-struct DefaultDevice {}
+struct PrintNumber {
+    number: f32
+}
 
-impl Device for DefaultDevice {
-    fn report(&self) -> String {
-        "I am default device, i can only be turned on or off".to_string()
+impl Command for PrintNumber {
+    fn execute(&mut self) -> Result<(), CommandError>{
+        println!("Number is {}", self.number);
+        Ok(())
     }
 }
 
-// define how to wrap the concrete decorators
-trait DeviceDecorator: Device {
-    fn new(component: Rc<dyn Device>) -> Self;
+struct RepeatImmediately {
+    inner: Rc<RefCell<dyn Command>>
 }
 
-struct TemperatureDecorator {
-    device: Rc<dyn Device>
-}
-
-impl DeviceDecorator for TemperatureDecorator {
-    fn new(device: Rc<dyn Device>) -> Self {
-        Self {device}
+impl Command for RepeatImmediately {
+    fn execute(&mut self) -> Result<(), CommandError>{
+        self.inner.borrow_mut().execute();
+        Ok(())
     }
 }
 
-impl Device for TemperatureDecorator {
-    fn report(&self) -> String {
-        format!("{}\nI am device with temperature sensor, i can return temperature measurements", self.device.report())
+struct RepeatLater {
+    inner: Rc<RefCell<dyn Command>>,
+    queue: Rc<RefCell<VecDeque<Rc<RefCell<dyn Command>>>>>
+}
+
+impl Command for RepeatLater {
+    fn execute(&mut self)  -> Result<(), CommandError> {
+        self.queue.borrow_mut().push_back(self.inner.clone());
+        Ok(())
     }
 }
 
-struct HumidityDecorator {
-    device: Rc<dyn Device>
-}
+struct UncertainCommand {}
 
-impl DeviceDecorator for HumidityDecorator {
-    fn new(device: Rc<dyn Device>) -> Self {
-        Self {device}
+impl Command for UncertainCommand {
+    fn execute(&mut self) -> Result<(), CommandError> {
+        // import randomness, if true crash if not Ok
+        Ok(())
     }
 }
 
-impl Device for HumidityDecorator {
-    fn report(&self) -> String {
-        format!("{}\nI am device with humidity sensor, i can return humidity measurements", self.device.report())
+enum Commands {
+    EnqueueFront,
+    LogException,
+    RepeatOnce,
+    RepeatTwice
+}
+
+
+// trait ErrorHandlingStrategy {
+//     fn handle(&mut self, error_pair: (&Command, &Error));
+// }
+
+enum Strategies {
+    Panic,
+    Log,
+    RetryOnce,
+    RetryTwice,
+
+}
+
+
+trait ErrorHandler {
+    fn handle(&mut self, error: CommandError);
+}
+
+struct PrinterErrorHandler {}
+
+impl ErrorHandler for PrinterErrorHandler {
+    fn handle(&mut self, error: CommandError) {
+        println!("{:?}", error)
     }
 }
 
-struct Client;
-impl Client {
-    fn print_report<T: Device>(device: &T) {
-        println!("{}", device.report())
+fn execute_commands<E: ErrorHandler>(command_queue: Rc<RefCell<VecDeque<Rc<RefCell<dyn Command>>>>>, error_handler: &mut E) {
+    while command_queue.borrow().len() > 0 {
+        let command = command_queue.borrow_mut().pop_front().unwrap();
+        match command.borrow_mut().execute() {
+            Ok(_) => {},
+            Err(err) => error_handler.handle(err)
+        };
+        //command.execute();
     }
 }
+
 fn main() {
-    let base_device = Rc::new(DefaultDevice{});
-    Client::print_report(base_device.as_ref());
+    let first_command = Rc::new(RefCell::new(PrintNumber{number: 10.0}));
+    let repeater = RepeatImmediately{inner: first_command.clone()};
+    let command_queue: Rc<RefCell<VecDeque<Rc<RefCell<dyn Command>>>>> = Rc::new(RefCell::new(VecDeque::new()));
+    let enqueuer = RepeatLater{inner: first_command.clone(), queue: command_queue.clone()};
+    command_queue.borrow_mut().push_back(first_command);
+    command_queue.borrow_mut().push_back(Rc::new(RefCell::new(repeater)));
+    command_queue.borrow_mut().push_back(Rc::new(RefCell::new(enqueuer)));
+    command_queue.borrow_mut().push_back(Rc::new(RefCell::new(PrintNumber{number: 20.0})));
 
-    let sensor_1 = TemperatureDecorator::new(base_device);
-    let sensor_2 = HumidityDecorator::new(Rc::new(sensor_1));
-    Client::print_report(&sensor_2);
+    let mut error_handler = PrinterErrorHandler{};
+    execute_commands(command_queue, &mut error_handler);
 }
