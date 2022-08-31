@@ -20,34 +20,40 @@ trait DeviceDecorator: Device {
 }
 
 struct TemperatureDecorator {
-    device: Rc<dyn Device>
+    device: Rc<dyn Device>,
 }
 
 impl DeviceDecorator for TemperatureDecorator {
     fn new(device: Rc<dyn Device>) -> Self {
-        Self {device}
+        Self { device }
     }
 }
 
 impl Device for TemperatureDecorator {
     fn report(&self) -> String {
-        format!("{}\nI am device with temperature sensor, i can return temperature measurements", self.device.report())
+        format!(
+            "{}\nI am device with temperature sensor, i can return temperature measurements",
+            self.device.report()
+        )
     }
 }
 
 struct HumidityDecorator {
-    device: Rc<dyn Device>
+    device: Rc<dyn Device>,
 }
 
 impl DeviceDecorator for HumidityDecorator {
     fn new(device: Rc<dyn Device>) -> Self {
-        Self {device}
+        Self { device }
     }
 }
 
 impl Device for HumidityDecorator {
     fn report(&self) -> String {
-        format!("{}\nI am device with humidity sensor, i can return humidity measurements", self.device.report())
+        format!(
+            "{}\nI am device with humidity sensor, i can return humidity measurements",
+            self.device.report()
+        )
     }
 }
 
@@ -58,7 +64,7 @@ impl Client {
     }
 }
 fn main() {
-    let base_device = Rc::new(DefaultDevice{});
+    let base_device = Rc::new(DefaultDevice {});
     Client::print_report(base_device.as_ref());
 
     let sensor_1 = TemperatureDecorator::new(base_device);
